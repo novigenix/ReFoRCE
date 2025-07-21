@@ -379,7 +379,8 @@ class REFORCE:
         pre_info: str, 
         csv_save_path: str, 
         sql_save_path: str, 
-        task: str | None = None
+        task: str | None = None,
+        print_output: bool = False
     ) -> None:
         """
         Generate SQL queries from natural language questions, including exploration and refinement phases.
@@ -414,6 +415,11 @@ class REFORCE:
         if logger:
             logger.info("[Gen SQL]\n" +self.chat_session.messages[-1]['content'] + "\n[Gen SQL]")
         response = response[0]
+        if print_output:
+            print("Question", question)
+            print("Response", response)
+            return 
+
         executed_result = self.sql_env.execute_sql_api(response, self.sql_id, csv_save_path, api=self.api, sqlite_path=self.sqlite_path)
         if executed_result == '0':
             with open(sql_save_path, "w") as f:

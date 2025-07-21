@@ -99,37 +99,37 @@ def main():
     
     """
     table_info = """
-Database schema for dummy_db:
+        Database schema for dummy_db:
 
-Table full name: users
-Column name: id Type: INTEGER, PRIMARY KEY
-Column name: name Type: TEXT
-Column name: age Type: INTEGER
-Sample rows from users:
-| id | name   | age |
-|----|--------|-----|
-| 1  | Alice  | 30  |
-| 2  | Bob    | 25  |
-| 3  | Charlie| 35  |
+        Table full name: users
+        Column name: id Type: INTEGER, PRIMARY KEY
+        Column name: name Type: TEXT
+        Column name: age Type: INTEGER
+        Sample rows from users:
+        | id | name   | age |
+        |----|--------|-----|
+        | 1  | Alice  | 30  |
+        | 2  | Bob    | 25  |
+        | 3  | Charlie| 35  |
 
---------------------------------------------------
-Table full name: orders
-Column name: order_id Type: INTEGER, PRIMARY KEY
-Column name: user_id Type: 
-	INTEGER, FOREIGN KEY REFERENCES users(id))
-Column name: amount Type: REAL
-Sample rows from orders:
-| order_id | user_id | amount |
-|----------|---------|--------|
-| 101      | 1       | 99.99  |
-| 102      | 2       | 149.99 |
+        --------------------------------------------------
+        Table full name: orders
+        Column name: order_id Type: INTEGER, PRIMARY KEY
+        Column name: user_id Type: 
+            INTEGER, FOREIGN KEY REFERENCES users(id))
+        Column name: amount Type: REAL
+        Sample rows from orders:
+        | order_id | user_id | amount |
+        |----------|---------|--------|
+        | 101      | 1       | 99.99  |
+        | 102      | 2       | 149.99 |
 
-The table structure information is:
-{
-    "users": ["id", "name", "age"],
-    "orders": ["order_id", "user_id", "amount"]
-}
-"""
+        The table structure information is:
+        {
+            "users": ["id", "name", "age"],
+            "orders": ["order_id", "user_id", "amount"]
+        }
+        """
     # Step 6: Initialize components
     chat_session_pre = GPTChat(model="Snowflake/Arctic-Text2SQL-R1-7B", temperature=0.7)
     chat_session = GPTChat(model="Snowflake/Arctic-Text2SQL-R1-7B", temperature=0.7)
@@ -169,10 +169,11 @@ The table structure information is:
         pre_info=None,
         csv_save_path=os.path.join(output_dir, "result.csv"),
         sql_save_path=os.path.join(output_dir, "result.sql"),
-        task=task
+        task=task,
+        print_output=True    # Added, skips database interaction.
     )
     
-    print("\nPipeline complete. Results in output directory.")
+    print("\nPipeline complete.")
 
 if __name__ == "__main__":
     main()
