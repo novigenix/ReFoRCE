@@ -1,3 +1,9 @@
+"""
+REFORCE class for generating, correcting, and refining SQL queries using
+a prompt-based approach with chat models and an SQL execution environment.
+Handles SQL exploration, self-correction, iterative self-refinement, and
+voting to select the best SQL query result.
+"""
 from utils import hard_cut, get_values_from_table, get_api_name, filter_bijection_like_dict, compare_pandas_table, is_valid_result, get_sqlite_path, split_sql
 from sql import SqlEnv
 import pandas as pd
@@ -12,7 +18,29 @@ import sys
 csv.field_size_limit(sys.maxsize)
 
 class REFORCE:
-    def __init__(self, db_path, sql_data, search_directory, prompt_class: Type[Prompts], sql_env: Type[SqlEnv]=None, chat_session_pre: Type[GPTChat]=None, chat_session: Type[GPTChat]=None, log_save_path=None, db_id=None, task=None):
+    def __init__(self, 
+                db_path: str, 
+                sql_data: dict, 
+                search_directory: str, 
+                prompt_class: Type[Prompts], 
+                sql_env: Type[SqlEnv] = None, 
+                chat_session_pre: Type[GPTChat] = None, 
+                chat_session: Type[GPTChat] = None, 
+                log_save_path: str = None, 
+                db_id: str = None, 
+                task: str = None) -> None:
+        """
+        :param db_path: Path to the database.
+        :param sql_data: SQL related metadata.
+        :param search_directory: Directory to save search outputs.
+        :param prompt_class: Prompt generation class.
+        :param sql_env: SQL environment instance/class.
+        :param chat_session_pre: Pre-exploration chat session instance.
+        :param chat_session: Main chat session instance.
+        :param log_save_path: Path to save logs.
+        :param db_id: Database identifier.
+        :param task: Task description.
+        """
         self.csv_save_name = "result.csv"
         self.sql_save_name = "result.sql"
         self.log_save_name = "log.log"
@@ -38,7 +66,14 @@ class REFORCE:
         self.chat_session = chat_session
 
 
-    def execute_sqls(self, sqls, logger):
+    def execute_sqls(self, sqls: list[str], logger: object) -> list[dict]:
+        """
+        Execute multiple SQL queries and collect their execution results.
+
+        :param sqls: List of SQL query strings to execute.
+        :param logger: Logger object to record execution details and errors.
+        :return: List of dictionaries where each dictionary contains a SQL query and its result or error.
+        """
         result_dic_list = []
         error_rec = []
         while sqls:
@@ -107,7 +142,22 @@ class REFORCE:
                 logger.info("[Successfully corrected]\n" +  f"Successfully executed. SQL:\n{sql}\nResults:\n{results}" + "\n[Successfully corrected]")
         return result_dic_list
 
-    def self_correct(self, sql, error, logger, simplify=False):
+    def self_correct(
+        self, 
+        sql: str, 
+        error: str, 
+        logger: object, 
+        simplify: bool = False
+    ) -> str | list[str] | None:
+        """
+        Attempt to automatically fix a SQL query based on the error message received.
+
+        :param sql: The original SQL query string that caused an error.
+        :param error: Error message returned from the failed SQL execution.
+        :param logger: Logger object for recording correction attempts.
+        :param simplify: Flag indicating whether to simplify the SQL during correction.
+        :return: The corrected SQL string, a list of alternative SQL strings, or None if correction was not possible.
+        """
         prompt = self.prompt_class.get_exploration_self_correct_prompt(sql, error)
         if simplify:
             prompt += "Since the output is empty, please simplify some conditions of the past sql.\n"
@@ -120,13 +170,38 @@ class REFORCE:
         logger.info("[Corrected SQL]\n" + self.chat_session_pre.messages[-1]['content'] + "\n[Corrected SQL]")
         return response
 
-    def format_answer(self, task, chat_session: Type[GPTChat]):
+    def format_answer(self, task: str, chat_session: type[GPTChat]) -> str:
+        """
+        Convert the output of a chat session into a formatted CSV string.
+
+        :param task: Description or identifier of the current task.
+        :param chat_session: Instance of the chat session containing the output to format.
+        :return: A string formatted as CSV representing the chat session’s answer.
+        """
         format_prompt = self.prompt_class.get_format_prompt()
         response_csv = chat_session.get_model_response("Task: " + task + format_prompt, "csv")
         response_csv = "```csv\n"+response_csv[0].split("\n")[0]+"\n```"
         return response_csv
 
-    def exploration(self, task, table_struct, table_info, logger):
+    def exploration(
+        self, 
+        task: str, 
+        table_struct: dict, 
+        table_info: str, 
+        logger: object
+    ) -> tuple[str, str, int]:
+        """
+        Conduct the initial exploration to generate candidate SQL queries.
+
+        :param task: Description of the task or question to explore.
+        :param table_struct: Dictionary representing the database tables and schema.
+        :param table_info: Informational string describing tables or database.
+        :param logger: Logger to track exploration progress and issues.
+        :return: A tuple containing:
+            - A preparation information string,
+            - The generated exploration SQL query as text,
+            - The number of remaining retry attempts allowed.
+        """
         pre_info = ''
         task = table_info + "\nTask: " + task + "\n"
         max_try = self.max_try
@@ -166,7 +241,35 @@ class REFORCE:
 
         return pre_info, response_pre_txt, max_try
 
-    def self_refine(self, args, logger, question, format_csv, table_struct, table_info, response_pre_txt, pre_info, csv_save_path, sql_save_path, task=None):
+    def self_refine(
+        self, 
+        args: object, 
+        logger: object, 
+        question: str, 
+        format_csv: str, 
+        table_struct: dict, 
+        table_info: str, 
+        response_pre_txt: str, 
+        pre_info: str, 
+        csv_save_path: str, 
+        sql_save_path: str, 
+        task: str | None = None
+    ) -> None:
+        """
+        Improve SQL queries iteratively using feedback from previous runs to refine results.
+
+        :param args: Configuration or parameters controlling the refinement process.
+        :param logger: Logger for recording refinement steps and outcomes.
+        :param question: The original natural language question or task statement.
+        :param format_csv: CSV formatting string template used for output.
+        :param table_struct: Database table structure dictionary.
+        :param table_info: String describing table information.
+        :param response_pre_txt: Text response from the preliminary exploration phase.
+        :param pre_info: Supplementary info from the pre-exploration.
+        :param csv_save_path: File path to save the refined results as CSV.
+        :param sql_save_path: File path to save refined SQL queries.
+        :param task: Optional task description or identifier.
+        """
         itercount = 0
         results_values = []
         results_tables = []
@@ -264,9 +367,38 @@ class REFORCE:
             logger.info("Max Iter, remove file")
         print(f"{self.sql_id}: chat_session len: {self.chat_session.get_message_len()}")
 
-    def gen(self, args, logger, question, format_csv, table_struct, table_info, response_pre_txt, pre_info, csv_save_path, sql_save_path, task=None):
+    def gen(
+        self, 
+        args: object, 
+        logger: object, 
+        question: str, 
+        format_csv: str, 
+        table_struct: dict, 
+        table_info: str, 
+        response_pre_txt: str, 
+        pre_info: str, 
+        csv_save_path: str, 
+        sql_save_path: str, 
+        task: str | None = None
+    ) -> None:
+        """
+        Generate SQL queries from natural language questions, including exploration and refinement phases.
+
+        :param args: Parameters and configurations for generation.
+        :param logger: Logger instance for tracking generation progress.
+        :param question: Input natural language question.
+        :param format_csv: CSV output formatting string.
+        :param table_struct: Schema dictionary for tables.
+        :param table_info: Textual information about database tables.
+        :param response_pre_txt: Preliminary response text from exploration.
+        :param pre_info: Additional info from exploration.
+        :param csv_save_path: Destination path for CSV output.
+        :param sql_save_path: Destination path for saving generated SQL.
+        :param task: Optional task description.
+        """
         gen_prompt = self.prompt_class.get_self_refine_prompt(table_info, task, pre_info, question, self.api, format_csv, table_struct, args.omnisql_format_pth)
-        logger.info("[Gen]\n" + gen_prompt + "\n[Gen]")
+        if logger:
+            logger.info("[Gen]\n" + gen_prompt + "\n[Gen]")
         max_try = self.max_try
         while max_try > 0:
             response = self.chat_session.get_model_response(gen_prompt, "sql")
@@ -279,20 +411,39 @@ class REFORCE:
             if os.path.exists(csv_save_path):
                 os.remove(csv_save_path)
             print(f"{self.sql_id}: Error when generating final SQL.")
-        logger.info("[Gen SQL]\n" +self.chat_session.messages[-1]['content'] + "\n[Gen SQL]")
+        if logger:
+            logger.info("[Gen SQL]\n" +self.chat_session.messages[-1]['content'] + "\n[Gen SQL]")
         response = response[0]
         executed_result = self.sql_env.execute_sql_api(response, self.sql_id, csv_save_path, api=self.api, sqlite_path=self.sqlite_path)
         if executed_result == '0':
             with open(sql_save_path, "w") as f:
                 f.write(response)
 
-    def model_vote(self, result, sql_paths, search_directory, args, table_info, task):
+    def model_vote(
+        self,
+        result: list[str],
+        sql_paths: list[str],
+        search_directory: str,
+        args: object,
+        table_info: str,
+        task: str
+    ) -> None:
+        """
+        Perform majority or weighted voting over generated SQL queries to select the best candidate.
+
+        :param result: List of natural language questions or related outputs used to guide voting.
+        :param sql_paths: List of file paths where generated SQL queries are stored.
+        :param search_directory: Directory containing exploration results and related files.
+        :param args: Arguments object containing configurations such as voting strategy, temperature, etc.
+        :param table_info: String representation of the table schema and metadata.
+        :param task: Task identifier or label for the current query generation context.
+        """
         chat_session = GPTChat(args.azure, args.model_vote)
         max_value = max(result.values())
         max_dict = {k: v for k, v in result.items() if v == max_value}
         # print(max_dict)
 
-        prompt = f"You are gieven DB info, task and candidate SQLs and thier results. You should choose the most correct one based on database info:\n{table_info}. The task is: {task}. Here are some candidate sqls and answers: \n"
+        prompt = f"You are given DB info, task and candidate SQLs and thier results. You should choose the most correct one based on database info:\n{table_info}. The task is: {task}. Here are some candidate sqls and answers: \n"
         for sql, counts in max_dict.items():
             sql_path = os.path.join(search_directory, sql)
             csv_path = os.path.join(search_directory, sql_paths[sql])
@@ -331,7 +482,24 @@ class REFORCE:
                 f.write(chat_session.messages[-1]['content'])
         sql_env.close_db()
 
-    def vote_result(self, search_directory, args, sql_paths, table_info, task):
+    def vote_result(
+        self,
+        search_directory: str,
+        args: object,
+        sql_paths: dict[str, str],
+        table_info: str,
+        task: str
+    ) -> None:
+        """
+        Perform result-level majority voting across multiple generated SQL outputs, 
+        resolving ties if necessary, and selecting the final query output.
+
+        :param search_directory: Directory containing SQL and result (.csv) files to vote on.
+        :param args: Arguments object specifying configuration flags (e.g. `model_vote`, `final_choose`, `random_vote_for_tie`).
+        :param sql_paths: Dictionary mapping SQL file keys to their respective relative paths.
+        :param table_info: Serialized representation of the schema, used during model-based voting.
+        :param task: Name of the current task (e.g. "lite", "BIRD") to contextualize voting behavior.
+        """
         # filter answer
         result = {}
         result_name = {}

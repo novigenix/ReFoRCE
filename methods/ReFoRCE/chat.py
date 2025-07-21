@@ -20,8 +20,10 @@ class GPTChat:
                     api_key=os.environ.get("DS_API_KEY"),
                 )                
             else: 
+                # Use a locally hosted model
                 self.client = OpenAI(
-                    api_key=os.environ.get("OPENAI_API_KEY"),
+                    base_url="http://localhost:8080/v1",
+                    api_key="-"
                 )
             # else:
             #     raise NotImplementedError("Unsupported API Key")

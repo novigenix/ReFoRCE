@@ -320,6 +320,11 @@ if __name__ == '__main__':
     parser.add_argument('--omnisql_format_pth', type=str, default=None)
     parser.add_argument('--BIRD_gold_result_path', type=str, default="../../data/BIRD/gold_result")
     args = parser.parse_args()
+
+    print("Script run with arguments:")
+    for key, value in vars(args).items():
+        print(f"  {key}: {value}")
+
     prompt_all = Prompts()
 
     full_db_id = {}

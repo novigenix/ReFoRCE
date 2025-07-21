@@ -45,7 +45,6 @@ def reduce_columns(sql: str, subset_columns: set[str]) -> str:
     :param subset_columns: Set of column names to keep in the reduced statement.
     :return: A new CREATE TABLE statement containing only the specified columns.
     """
-    table_match 
     table_match = re.search(r'create\s+(?:or\s+replace\s+)?table\s+`?([^\s(]+)`?', sql, re.IGNORECASE)
     assert table_match, sql
     table_name = table_match.group(1)
@@ -172,6 +171,7 @@ def reduce_ddl(example_path: str, dictionaries: dict[str, any], linked_json: str
             for i in temp_file_paths:
                 os.remove(i)
     compress_ddl(example_path, add_description=True, add_sample_rows=True, rm_digits=True, schema_linked=True, clear_long_eg_des=True, reduce_col=reduce_col)
+    print("Done with schema linking")
 
 ask_prompt = """
 You are doing table level schema linking. Given a table with schema information and the task, you should think step by step and decide whether this table is related to the task. 
@@ -192,6 +192,40 @@ Task: {1}
 """
 
 def ask_model_sl(example_path: str, json_save_pth: str) -> None:
+    """
+    Perform table-level schema linking by querying the model in parallel.
+
+    :param example_path: Path to the folder containing examples.
+    :param json_save_pth: Path to save the linked JSON results.
+    :return: None
+    """
+    linked_dic = {}
+
+    def process_example(ex_id):
+        if ex_id.startswith("local"):
+            return None, None
+        tb_info_pth = search_file(os.path.join(example_path, ex_id), "prompts.txt")
+        assert len(tb_info_pth) == 1
+        with open(tb_info_pth[0]) as f:
+            tb_info = f.read()
+        task = task_dict[ex_id]
+        chat_session = GPTChat(azure=True, model="gpt-4o-rag-research", temperature=0)
+        result = ask_model_sl_(tb_info, task, chat_session)
+        return ex_id, result
+
+    linked_dic = {}
+    print("Doing table-level schema linking")
+    with ThreadPoolExecutor(max_workers=32) as executor:
+        futures = [executor.submit(process_example, ex_id) for ex_id in dictionaries]
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Processing"):
+            ex_id, result = future.result()
+            if ex_id is not None:
+                linked_dic[ex_id] = result
+
+        with open(json_save_pth, "w") as f:
+            json.dump(linked_dic, f, indent=4)
+
+def ask_model_sl2(example_path: str, json_save_pth: str, dictionaries) -> None:
     """
     Perform table-level schema linking by querying the model in parallel.
 
