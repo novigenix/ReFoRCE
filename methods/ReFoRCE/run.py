@@ -1,6 +1,47 @@
+"""
+Main execution script for the ReFoRCE SQL generation pipeline.
+
+This script orchestrates the full workflow for generating and refining SQL queries
+using a multi-stage process that improves query accuracy through iterative refinement
+and voting mechanisms.
+
+The pipeline consists of four key steps, each involving a separate run of the script
+with different configurations:
+
+1. Self-refinement + Majority Voting  
+   - Generates initial SQL queries using self-refinement to iteratively improve outputs.  
+   - Applies majority voting across multiple generations to select the most consistent query.
+
+2. Self-refinement + Majority Voting + Column Exploration + Rerun  
+   - Enhances Step 1 by adding column exploration to better understand schema details,  
+     improving query generation quality.  
+   - Includes rerunning unfinished or failed queries to maximize coverage and quality.
+
+3. Random Vote for Tie-breaking  
+   - Resolves ties from majority voting by randomly selecting among tied queries,  
+     ensuring final decisions are made when consensus is unclear.
+
+4. Random Vote with Final Choose  
+   - Finalizes the voting process by enforcing a single, final query choice per example,  
+     consolidating previous results into a definitive output.
+
+Additional Features:
+- Supports parallel execution to speed up query generation.  
+- Integrates schema linking and exploration for improved query accuracy.  
+- Compatible with multiple database backends (SQLite, BigQuery, etc.).
+
+Key Functions:
+- execute(): Runs the generation and refinement for a single query.  
+- process_sql_data(): Processes SQL tasks according to pipeline steps.  
+- main(): Coordinates the parallel execution and manages the pipeline workflow.
+
+Usage:
+    python run.py --task [snow|lite|BIRD] --db_path [path_to_db] --output_path [output_dir]
+"""
 import os
 import argparse
 import glob
+from typing import Any, Optional
 from utils import get_table_info, initialize_logger, get_dictionary, get_sqlite_path
 from agent import REFORCE
 from chat import GPTChat
@@ -10,7 +51,33 @@ from sql import SqlEnv
 import time
 import json
 
-def execute(question, table_info, args, csv_save_path, log_save_path, sql_save_path, search_directory, format_csv, sql_data):
+def execute(
+    question: str,
+    table_info: str,
+    args: Any,
+    csv_save_path: str,
+    log_save_path: str,
+    sql_save_path: str,
+    search_directory: str,
+    format_csv: Optional[str],
+    sql_data: str
+) -> None:
+    """
+    Executes SQL generation and evaluation for a single SQL data example.
+
+    Handles loading existing results, setting up the environment, running
+    column exploration and self-refinement if enabled, and saving outputs.
+
+    :param question: The natural language question to generate SQL for.
+    :param table_info: String containing table structure information for the database.
+    :param args: Command line arguments/configuration parameters.
+    :param csv_save_path: Path to save the resulting CSV file after SQL execution.
+    :param log_save_path: Path to save the log file for this execution.
+    :param sql_save_path: Path to save the generated SQL query.
+    :param search_directory: Directory where intermediate and output files are stored.
+    :param format_csv: Optional string containing CSV format restrictions for the answer.
+    :param sql_data: Identifier for the current SQL data example.
+    """
     db_id = None
     if full_db_id:
         db_id = full_db_id[sql_data]
@@ -83,7 +150,24 @@ def main(args):
 
     print("Finished")
 
-def process_sql_data(sql_data):
+def process_sql_data(sql_data: str) -> None:
+    """
+    Processes a single SQL generation task for a given SQL data instance.
+
+    This function handles:
+    - Setting up the working directory for the task
+    - Skipping processing if results already exist unless overwriting is allowed
+    - Loading gold-standard results if applicable (e.g., for BIRD task)
+    - Fetching table schema information required for SQL generation
+    - Optionally formatting the expected answer schema for model guidance
+    - Executing multiple SQL generation attempts in parallel if voting is enabled
+    - Performing a final vote to select the best SQL query output
+    - Otherwise, directly generating and saving SQL and execution results
+    - Logging and timing the entire process
+
+    :param sql_data: Identifier string of the SQL generation task instance
+    :return: None
+    """
     start_time = time.time()
 
     print(sql_data)

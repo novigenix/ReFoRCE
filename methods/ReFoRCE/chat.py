@@ -2,9 +2,12 @@ from openai import OpenAI, AzureOpenAI
 from utils import extract_all_blocks
 import os
 import sys
+import mlflow
 
 class GPTChat:
     def __init__(self, azure=False, model="gpt-4o", temperature=1) -> None:
+        mlflow.openai.autolog() 
+
         if not azure:
             if model in ["o1-preview", "o1-mini"]:
                 self.client = OpenAI(

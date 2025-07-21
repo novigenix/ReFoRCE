@@ -1,3 +1,16 @@
+"""
+This script processes database DDL files for various datasets (e.g., Spider, BQ, SF),
+cleans and filters table metadata, and generates prompt text files for downstream tasks
+(e.g., schema linking, text-to-SQL). It supports both local `.sqlite` databases and
+hierarchically organized project folders with `.json` table files.
+
+Supported operations include:
+- Folder restructuring for table `.json` files and DDLs
+- DDL file compression with optional table description/sample row appending
+- Filtering by gold-standard schema/table names
+- Schema linking support with reduced column extraction
+- Output formatting into text prompts for LLM usage
+"""
 import os
 import pandas as pd
 from tqdm import tqdm
@@ -7,10 +20,18 @@ import sqlite3
 from utils import remove_digits, is_file, clear_description, clear_sample_rows, extract_column_names, extract_real_table_names, get_api_name, clear_name, remove_declare_lines, clear_byte
 import json
 pd.set_option('display.max_colwidth', None)
+
 THRESHOLD = 200000
 WRONG_GOLD_TABLES = ["bq095", "bq350", "bq379", "bq396", "sf_bq084", "sf_bq200","sf_bq226", "sf_bq295", "sf_bq358"]
 SKIP_GOLD_SQLS = ["bq350", "local039", "bq095", "bq374", "bq379", "bq396", "bq403", "bq406", "sf_bq233", "sf_bq273", "sf_local039", "sf_bq295"]
-def process_ddl(ddl_file):
+
+def process_ddl(ddl_file: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """
+    Groups table names by removing digits and filters out duplicates if a group exceeds a threshold.
+
+    :param ddl_file: DataFrame containing table metadata with a 'table_name' column.
+    :return: Filtered DDL file and a mapping of representative table groups.
+    """
     table_names = ddl_file['table_name'].to_list()
     representatives = {}
     for i in range(len(ddl_file)):
@@ -29,7 +50,15 @@ def process_ddl(ddl_file):
                 del representatives[remove_digits(table_names[i])]
     return ddl_file, representatives
 
-def process_ddl_gold(ddl_file, gold_table_names, entry=None):
+def process_ddl_gold(ddl_file: pd.DataFrame, gold_table_names: set[str], entry: str | None = None) -> tuple[pd.DataFrame, dict]:
+    """
+    Filters DDL file to include only gold table names and selects representatives.
+
+    :param ddl_file: DDL file as a DataFrame.
+    :param gold_table_names: Set of gold table names to retain.
+    :param entry: Optional entry ID (used for logging or skipping).
+    :return: Filtered DDL and representative table mapping.
+    """
     table_names = ddl_file['table_name'].to_list()
     representatives = {}
 
@@ -56,7 +85,15 @@ def process_ddl_gold(ddl_file, gold_table_names, entry=None):
 
     return ddl_file, representatives
 
-def process_ddl_gold_schema(ddl_file, full_table_names_with_omit, entry):
+def process_ddl_gold_schema(ddl_file: pd.DataFrame, full_table_names_with_omit: list[str], entry: str) -> tuple[pd.DataFrame, dict]:
+    """
+    Filters DDL file based on full gold schema table names.
+
+    :param ddl_file: DDL file as a DataFrame.
+    :param full_table_names_with_omit: List of full or partial gold table names.
+    :param entry: Current example ID.
+    :return: Filtered DDL file and representative table mapping.
+    """
     table_names = ddl_file['table_name'].to_list()
     representatives = {}
 
@@ -84,14 +121,24 @@ def process_ddl_gold_schema(ddl_file, full_table_names_with_omit, entry):
 
     return ddl_file, representatives
 
-def check_table_names(ddl_path):
+def check_table_names(ddl_path: str) -> None:
+    """
+    Rewrites the DDL file so that table names only contain their base name (no schema prefix).
+
+    :param ddl_path: Path to the DDL CSV file.
+    """
     ddl_file = pd.read_csv(ddl_path)
     temp_path = ddl_path.replace("DDL.csv", "DDL_tmp.csv")
     ddl_file['table_name'] = ddl_file['table_name'].str.split('.').str[-1]
     ddl_file.to_csv(temp_path, index=False)
     os.replace(temp_path, ddl_path)
 
-def make_folder(args):
+def make_folder(args: argparse.Namespace) -> None:
+    """
+    Restructures the directory layout by moving JSON and DDL files into per-table folders.
+
+    :param args: Parsed command-line arguments.
+    """
     print("Make folders for some examples.")
     example_folder = args.example_folder
     for entry in tqdm(os.listdir(example_folder)):
@@ -124,7 +171,71 @@ def make_folder(args):
                         shutil.move(folder_path, os.path.join(entry1_path, folder_name))
                         shutil.rmtree(project_name_path)
 
-def compress_ddl(example_folder, add_description=False, add_sample_rows=False, rm_digits=False, schema_linked=False, clear_long_eg_des=False, sqlite_sl_path=None, reduce_col=False, use_gold_table=False, use_gold_schema=False):
+def compress_ddl(
+    example_folder: str,
+    add_description: bool = False,
+    add_sample_rows: bool = False,
+    rm_digits: bool = False,
+    schema_linked: bool = False,
+    clear_long_eg_des: bool = False,
+    sqlite_sl_path: str | None = None,
+    reduce_col: bool = False,
+    use_gold_table: bool = False,
+    use_gold_schema: bool = False
+) -> None:
+    """
+    Processes each example to compress DDL and JSON metadata into a schema prompt format.
+    This
+
+    :param example_folder: Directory containing example folders.
+    :param add_description: Whether to include column descriptions in the output.
+    :param add_sample_rows: Whether to include sample table rows in the output.
+    :param rm_digits: If True, group and filter tables by digit-less names.
+    :param schema_linked: Whether to use prelinked DDL_sl.csv instead of DDL.csv.
+    :param clear_long_eg_des: Truncate long descriptions if prompt is too long.
+    :param sqlite_sl_path: Path to JSON of schema linking results for SQLite entries.
+    :param reduce_col: Use only columns from schema linking result (if available).
+    :param use_gold_table: Filter using gold table names.
+    :param use_gold_schema: Filter using full gold SQL schema.
+    :return: None. Outputs are written to `prompts.txt` in each example subdirectory.
+
+    Example:
+        >>> compress_ddl(
+        ...     example_folder="examples/",
+        ...     add_description=True,
+        ...     add_sample_rows=True,
+        ...     use_gold_table=True,
+        ...     rm_digits=True
+        ... )
+
+        This will:
+        - Load each example in "examples/"
+        - Keep only tables listed in the gold table set
+        - Include descriptions and sample rows
+        - Remove digit-variant tables like `user_1`, `user_2`, keeping just one
+        - Write a `prompts.txt` file in each example folder
+
+    If DLL.csv contains:
+    | table_name | column_name | column_type |
+    | ----------- | ------------ | ------------ |
+    | customers   | id           | INT          |
+    | customers   | name         | TEXT         |
+    | customers   | email        | TEXT         |
+    | orders      | order\_id    | INT          |
+    | orders      | customer\_id | INT          |
+    | orders      | total        | FLOAT        |
+
+    then (assuming add_description=True) it will create the prompt:
+        Table customers:
+        - id (INT): unique customer identifier
+        - name (TEXT): full name of the customer
+        - email (TEXT): contact email address
+
+        Table orders:
+        - order_id (INT): unique order ID
+        - customer_id (INT): links to the customer who placed the order
+        - total (FLOAT): total order value in dollars
+            """
     print("Compress DDL files.")
     for entry in tqdm(os.listdir(example_folder)):
         external_knowledge = None
@@ -314,7 +425,25 @@ def compress_ddl(example_folder, add_description=False, add_sample_rows=False, r
                     prompts += "The table structure information is (table names): \n" + str(table_names) + "\n"
                 f.writelines(prompts)
 
-def get_sqlite_data(path, entry, add_description=False, add_sample_rows=False, gold_table_names=None, gold_column_names=None):
+def get_sqlite_data(
+    path: str,
+    entry: str,
+    add_description: bool = False,
+    add_sample_rows: bool = False,
+    gold_table_names: set[str] | None = None,
+    gold_column_names: set[str] | None = None
+) -> tuple[list[str], str]:
+    """
+    Extracts table and column info from a SQLite database and formats it into a prompt.
+
+    :param path: Path to the SQLite file.
+    :param entry: Example ID (used for logging or prompt labeling).
+    :param add_description: Whether to include descriptions (not implemented).
+    :param add_sample_rows: Whether to fetch and include sample rows.
+    :param gold_table_names: Optional whitelist of table names to include.
+    :param gold_column_names: Optional whitelist of column names to include.
+    :return: List of table names and a prompt string with formatted schema information.
+    """
     connection = sqlite3.connect(path)
     cursor = connection.cursor()
     cursor.execute("SELECT name, sql FROM sqlite_master WHERE type='table'")

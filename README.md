@@ -41,6 +41,39 @@ We present ReFoRCE, a Text-to-SQL agent that tops the [Spider 2.0 leaderboard](h
 - 📁 spider2-snow/                          -- Spider2-snow DB and Evaluation (copy from Spider2 Repo)  
 ```
 
+**Improved Explanation of the pipeline**
+`reconstruct_data.py`
+**Role:**
+Prepares raw database schemas into structured, readable files for each example.
+
+**What it does:**
+* Converts SQLite databases into:
+  * `DDL.csv` — one row per table with its `CREATE TABLE` SQL
+  * `prompts.txt` — full schema in natural language
+  * Optional: table descriptions, sample rows, cleaned names
+* Used **before** schema linking to ensure every example has consistent, complete schema metadata.
+
+`reconstruct_data.py`
+**Role:**
+Filters the schema to keep only tables and columns relevant to the input question.
+
+**What it does:**
+
+* Uses LLM or gold labels to decide which tables/columns matter
+* Writes filtered schema to `DDL_sl.csv`
+* Calls `compress_ddl()` to regenerate a new `prompts.txt` with only relevant tables
+* Used **after** `reconstruct_data.py` to reduce prompt length and noise
+
+`run.py`
+Is ran 4 times:
+| Step | Purpose                                   | Key Flags Used                                                                                      |
+| ---- | ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 1    | Generate & refine queries + majority vote | `--do_self_refinement`, `--do_vote`                                                                 |
+| 2    | Add column exploration + rerun unfinished | `--do_self_refinement`, `--do_vote`, `--do_column_exploration`, `--rerun`, `--overwrite_unfinished` |
+| 3    | Resolve tie votes randomly                | `--do_vote`, `--random_vote_for_tie`                                                                |
+| 4    | Finalize voting decision                  | `--do_vote`, `--random_vote_for_tie`, `--final_choose`                                              |
+
+
 **Note:** 
 - For folders `spider2-lite` and `spider2-snow`, please obtain the latest version from the [Spider2 Repo](https://github.com/xlang-ai/Spider2). 
 - The evaluation in this repository is based on execution results. Make sure to run the gold SQLs to get the latest results and place them in [Spider2-lite Exec Results Folder](spider2-lite/evaluation_suite/gold/exec_result) and [Spider2-snow Exec Results Folder](spider2-snow/evaluation_suite/gold/exec_result) respectively; otherwise, performance may drop a bit due to changes in the database and updates from Spider 2.0.

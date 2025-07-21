@@ -1,3 +1,25 @@
+"""
+This script performs schema reduction and linking for Text-to-SQL tasks by:
+1. Using model-in-the-loop labeling (via GPT) to identify relevant tables and columns for each example.
+2. Filtering the original DDL.csv files to retain only those relevant tables and columns.
+3. Writing the filtered schema to DDL_sl.csv and converting them into natural-language prompts using compress_ddl.
+
+Workflow:
+- Reads each example's database schema (DDL.csv).
+- Applies schema linking (from ask_model_sl or precomputed JSON) to identify relevant tables.
+- Optionally reduces columns within relevant tables.
+- Outputs schema-linked DDL files (DDL_sl.csv).
+- Then calls compress_ddl() from reconstruct_data.py to generate prompts.txt for each example.
+    The second compress_dll() ensures the new prompt only has relevant table information.
+
+Key Functions:
+- ask_model_sl: Uses GPT to decide whether a table is relevant and which columns matter.
+- reduce_columns: Trims SQL CREATE TABLE statements to selected columns.
+- reduce_ddl: Orchestrates the whole schema filtering and prompt generation process.
+- compress_ddl (from reconstruct_data.py): Final formatting of DDL_sl.csv into user-readable prompts.
+
+Used in data preparation pipelines for training or evaluating Text-to-SQL systems (e.g., ReFoRCE).
+"""
 from utils import search_file, get_api_name, get_dictionary, get_tb_info, get_external, compute_precision_recall, is_csv_empty, clear_name
 from reconstruct_data import remove_digits, compress_ddl
 import os
@@ -14,8 +36,16 @@ csv.field_size_limit(sys.maxsize)
 THRESHOLD = 200000
 DEPS_DEV_V1 = ["sf_bq016", "sf_bq062", "sf_bq063", "sf_bq028"]
 
-def reduce_columns(sql: str, subset_columns: set[str]) -> str:
 
+def reduce_columns(sql: str, subset_columns: set[str]) -> str:
+    """
+    Reduce the columns in a CREATE TABLE SQL statement to only those specified.
+
+    :param sql: The original CREATE TABLE SQL statement.
+    :param subset_columns: Set of column names to keep in the reduced statement.
+    :return: A new CREATE TABLE statement containing only the specified columns.
+    """
+    table_match 
     table_match = re.search(r'create\s+(?:or\s+replace\s+)?table\s+`?([^\s(]+)`?', sql, re.IGNORECASE)
     assert table_match, sql
     table_name = table_match.group(1)
@@ -45,7 +75,16 @@ def reduce_columns(sql: str, subset_columns: set[str]) -> str:
     return new_sql
 
 
-def reduce_ddl(example_path, dictionaries, linked_json, reduce_col=False):
+def reduce_ddl(example_path: str, dictionaries: dict[str, any], linked_json: str, reduce_col: bool = False) -> None:
+    """
+    Perform schema linking by filtering DDL files according to linked tables and optionally reduce columns.
+
+    :param example_path: Path to the folder containing examples.
+    :param dictionaries: Dictionary of example IDs mapped to example metadata.
+    :param linked_json: Path to the JSON file with linked table information.
+    :param reduce_col: Whether to reduce columns to only those linked.
+    :return: None
+    """
     print("Doing schema linking")
     for eg_id in tqdm(dictionaries):
         api = get_api_name(eg_id)
@@ -152,7 +191,14 @@ Task: {1}
 {2}
 """
 
-def ask_model_sl(example_path, json_save_pth):
+def ask_model_sl(example_path: str, json_save_pth: str) -> None:
+    """
+    Perform table-level schema linking by querying the model in parallel.
+
+    :param example_path: Path to the folder containing examples.
+    :param json_save_pth: Path to save the linked JSON results.
+    :return: None
+    """
     linked_dic = {}
 
     def process_example(ex_id):
@@ -179,7 +225,15 @@ def ask_model_sl(example_path, json_save_pth):
         with open(json_save_pth, "w") as f:
             json.dump(linked_dic, f, indent=4)
 
-def ask_model_sl_(tb_info, task, chat_session):
+def ask_model_sl_(tb_info: str, task: str, chat_session: GPTChat) -> list[dict[str, any]]:
+    """
+    Query the model about table schema linking for each table in the given info.
+
+    :param tb_info: Table schema information text.
+    :param task: Task description.
+    :param chat_session: Initialized GPTChat session.
+    :return: List of dictionaries with linking decisions and related columns.
+    """
     tbs = get_tb_info(tb_info)
     external = get_external(tb_info)
     linked = []
@@ -208,7 +262,14 @@ def ask_model_sl_(tb_info, task, chat_session):
 
     return linked
 
-def compute_metrics_sl(file_pth, db_path):
+def compute_metrics_sl(file_pth: str, db_path: str) -> None:
+    """
+    Compute precision and recall metrics for schema linking results.
+
+    :param file_pth: Path to the JSON file with schema linking predictions.
+    :param db_path: Path to the example database folder.
+    :return: None
+    """
     with open(file_pth) as f:
         data = json.load(f)
     count = 0
