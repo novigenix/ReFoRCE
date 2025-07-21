@@ -101,18 +101,10 @@ def main():
     table_info = """
 Database schema for dummy_db:
 
-Table: users
-Columns:
-- id (INTEGER, PRIMARY KEY)
-- name (TEXT)
-- age (INTEGER)
-
-Table: orders
-Columns:
-- order_id (INTEGER, PRIMARY KEY)
-- user_id (INTEGER, FOREIGN KEY REFERENCES users(id))
-- amount (REAL)
-
+Table full name: users
+Column name: id Type: INTEGER, PRIMARY KEY
+Column name: name Type: TEXT
+Column name: age Type: INTEGER
 Sample rows from users:
 | id | name   | age |
 |----|--------|-----|
@@ -120,6 +112,12 @@ Sample rows from users:
 | 2  | Bob    | 25  |
 | 3  | Charlie| 35  |
 
+--------------------------------------------------
+Table full name: orders
+Column name: order_id Type: INTEGER, PRIMARY KEY
+Column name: user_id Type: 
+	INTEGER, FOREIGN KEY REFERENCES users(id))
+Column name: amount Type: REAL
 Sample rows from orders:
 | order_id | user_id | amount |
 |----------|---------|--------|
