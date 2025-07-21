@@ -52,6 +52,7 @@ def setup_example_structure(db_path: str, example_path: str) -> None:
         print(f"Linked database to {target_path}")
 
 def main():
+    # Maybe turns this into a unit test layer
     # Configuration
     db_path = "./data/db.sqlite"
     example_path = "./examples"

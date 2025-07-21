@@ -3,9 +3,37 @@ from utils import extract_all_blocks
 import os
 import sys
 import mlflow
+import tiktoken
+
+def count_tokens_from_messages(messages, model="gpt-4o"):
+    # Basic implementation, need to look into more later.
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        # Fallback to a base encoding
+        encoding = tiktoken.get_encoding("cl100k_base")
+
+    # Approximate per-message overhead for OpenAI models (adjust if needed)
+    tokens_per_message = 4
+    tokens_per_name = -1  # if 'name' field is present in message
+
+    total_tokens = 0
+    for msg in messages:
+        total_tokens += tokens_per_message
+        total_tokens += len(encoding.encode(msg.get("content", "")))
+        if "name" in msg:
+            total_tokens += tokens_per_name
+
+    total_tokens += 2  # Priming tokens (system prompt/etc)
+    return total_tokens
 
 class GPTChat:
-    def __init__(self, azure=False, model="gpt-4o", temperature=1) -> None:
+    def __init__(self,
+                 azure=False,
+                 model="gpt-4o",
+                 temperature=1,
+                 max_context_tokens=None,
+                 max_response_tokens=None) -> None:
         mlflow.openai.autolog() 
 
         if not azure:
@@ -51,20 +79,25 @@ class GPTChat:
         self.model = model
         self.temperature = float(temperature)
 
+        self.max_context_tokens = max_context_tokens
+        self.max_response_tokens = max_response_tokens
+
     def get_response(self, prompt) -> str:
         self.messages.append({"role": "user", "content": prompt})
         if self.model in ["o3-pro"]:
             response = self.client.responses.create(
                 model=self.model,
                 input=self.messages,
-                temperature=self.temperature
+                temperature=self.temperature,
+                max_output_token=self.max_response_tokens
             )
             main_content = response.output_text
         else:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=self.messages,
-                temperature=self.temperature
+                temperature=self.temperature,
+                max_output_tokens=self.max_response_tokens
             )
             main_content = response.choices[0].message.content
         self.messages.append({"role": "assistant", "content": main_content})
