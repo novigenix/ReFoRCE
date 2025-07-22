@@ -51,6 +51,7 @@ from sql import SqlEnv
 import time
 import json
 import numpy as np
+import mlflow
 
 def estimate_token_usage(
         sql_data: str,
@@ -336,8 +337,11 @@ if __name__ == '__main__':
     parser.add_argument('--BIRD_gold_result_path', type=str, default="../../data/BIRD/gold_result")
     parser.add_argument('--num_samples', type=int, default=None)
     parser.add_argument("--estimate_token_usage", action="store_true")
+    
     args = parser.parse_args()
-
+    # mlflow.set_experiment("o3 single sample test.")
+    # mlflow.set_tracking_uri('http://localhost:5000')
+    # mlflow.openai.autolog()
     print("Script run with arguments:")
     for key, value in vars(args).items():
         print(f"  {key}: {value}")

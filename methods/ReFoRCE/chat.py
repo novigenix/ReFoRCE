@@ -36,7 +36,7 @@ class GPTChat:
         # the mock argument is to mock the OpenAI client. This can
         # be used to test the code without needing a model.
         # The mocked response is the first 30 characters in the prompt.
-        # mlflow.openai.autolog() 
+        # 
 
         if model == "mock":
             self.client = MockOpenAIClient()
@@ -92,16 +92,16 @@ class GPTChat:
             response = self.client.responses.create(
                 model=self.model,
                 input=self.messages,
-                temperature=self.temperature,
-                max_output_token=self.max_response_tokens
+                temperature=self.temperature
+                # max_tokens=self.max_response_tokens
             )
             main_content = response.output_text
         else:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=self.messages,
-                temperature=self.temperature,
-                max_output_tokens=self.max_response_tokens
+                temperature=self.temperature
+                # max_tokens=self.max_response_tokens
             )
             main_content = response.choices[0].message.content
         self.messages.append({"role": "assistant", "content": main_content})
