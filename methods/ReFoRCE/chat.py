@@ -3,29 +3,7 @@ from utils import extract_all_blocks
 import os
 import sys
 import mlflow
-import tiktoken
 
-def count_tokens_from_messages(messages, model="gpt-4o"):
-    # Basic implementation, need to look into more later.
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        # Fallback to a base encoding
-        encoding = tiktoken.get_encoding("cl100k_base")
-
-    # Approximate per-message overhead for OpenAI models (adjust if needed)
-    tokens_per_message = 4
-    tokens_per_name = -1  # if 'name' field is present in message
-
-    total_tokens = 0
-    for msg in messages:
-        total_tokens += tokens_per_message
-        total_tokens += len(encoding.encode(msg.get("content", "")))
-        if "name" in msg:
-            total_tokens += tokens_per_name
-
-    total_tokens += 2  # Priming tokens (system prompt/etc)
-    return total_tokens
 
 class GPTChat:
     def __init__(self,
@@ -54,7 +32,7 @@ class GPTChat:
                     api_key="-"
                 )
             # else:
-            #     raise NotImplementedError("Unsupported API Key")
+            #     raise NotImplementedError("Unsupported API Key")  
         else:
             if model in ["o1-preview", "o1-mini", "o3", "o4-mini"]:
                 self.client = AzureOpenAI(
@@ -145,3 +123,7 @@ class GPTChat:
     
     def init_messages(self):
         self.messages = []
+
+
+if __name__ == "__main__":
+    print(count_tokens_from_messages("cat and a cat"))
