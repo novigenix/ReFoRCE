@@ -42,7 +42,7 @@ import os
 import argparse
 import glob
 from typing import Any, Optional
-from utils import get_table_info, initialize_logger, get_dictionary, get_sqlite_path
+from utils import count_tokens_prompt, get_table_info, initialize_logger, get_dictionary, get_sqlite_path
 from agent import REFORCE
 from chat import GPTChat
 from prompt import Prompts
@@ -50,6 +50,21 @@ import threading, concurrent
 from sql import SqlEnv
 import time
 import json
+import numpy as np
+
+def estimate_token_usage(
+        sql_data: str,
+        model: str = "gpt-4o"
+) -> int:
+    """
+    There may be some additional instructions bu the token count in the prompt
+    will be dominated by the number of tokens in the question and the table_info
+    """
+    question = task_dict[sql_data]
+    search_directory = os.path.join(args.output_path, sql_data)
+    agent_format = REFORCE(args.db_path, sql_data, search_directory, prompt_all)
+    table_info = get_table_info(args.db_path, sql_data, agent_format.api, clear_des=True, full_tb_info=full_tb_info)
+    return count_tokens_prompt(question + table_info, model)
 
 def execute(
     question: str,
@@ -319,6 +334,8 @@ if __name__ == '__main__':
 
     parser.add_argument('--omnisql_format_pth', type=str, default=None)
     parser.add_argument('--BIRD_gold_result_path', type=str, default="../../data/BIRD/gold_result")
+    parser.add_argument('--num_samples', type=int, default=None)
+    parser.add_argument("--estimate_token_usage", action="store_true")
     args = parser.parse_args()
 
     print("Script run with arguments:")
@@ -361,4 +378,11 @@ if __name__ == '__main__':
                 full_gold_sql[instance_id] = example["SQL"]                     
     else:
         dictionaries, task_dict = get_dictionary(args.db_path, args.task)
+        if args.num_samples is not None:
+            dictionaries = dictionaries[:args.num_samples]
+    if args.estimate_token_usage:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.num_workers) as executor:
+            token_counts = list(executor.map(lambda sql_id: estimate_token_usage(sql_id, model=args.generation_model or "gpt-4o"), dictionaries))
+        print("exp. token usage", sum(token_counts))
+        print("mean, stdev", round(np.mean(token_counts), 3), round(np.std(token_counts), 3))
     main(args)

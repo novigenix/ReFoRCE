@@ -1,3 +1,4 @@
+from typing import Dict, List, Optional, Union
 from openai import OpenAI, AzureOpenAI
 from utils import extract_all_blocks
 import os
@@ -7,11 +8,11 @@ import mlflow
 
 class GPTChat:
     def __init__(self,
-                 azure=False,
-                 model="gpt-4o",
-                 temperature=1,
-                 max_context_tokens=None,
-                 max_response_tokens=None) -> None:
+                 azure: bool = False,
+                 model: str = "gpt-4o",
+                 temperature: Union[int, float] = 1,
+                 max_context_tokens: Optional[int] = None,
+                 max_response_tokens: Optional[int] = None):
         mlflow.openai.autolog() 
 
         if not azure:
@@ -60,7 +61,7 @@ class GPTChat:
         self.max_context_tokens = max_context_tokens
         self.max_response_tokens = max_response_tokens
 
-    def get_response(self, prompt) -> str:
+    def get_response(self, prompt: str) -> str:
         self.messages.append({"role": "user", "content": prompt})
         if self.model in ["o3-pro"]:
             response = self.client.responses.create(
@@ -81,7 +82,7 @@ class GPTChat:
         self.messages.append({"role": "assistant", "content": main_content})
         return main_content
 
-    def get_model_response(self, prompt, code_format=None) -> list:
+    def get_model_response(self, prompt: str, code_format: Optional[str] = None) -> List[str]:
         code_blocks = []
         max_try = 3
         while code_blocks == [] and max_try > 0:
@@ -98,7 +99,7 @@ class GPTChat:
             
         return code_blocks
 
-    def get_model_response_txt(self, prompt):
+    def get_model_response_txt(self, prompt: str) -> str:
         max_try = 3
         while max_try > 0:
             max_try -= 1
@@ -114,16 +115,12 @@ class GPTChat:
         
         return response
 
-    def get_message_len(self):
+    def get_message_len(self) -> Dict[str, int]:
         return {
             "prompt_len": sum(len(item["content"]) for item in self.messages if item["role"] == "user"),
             "response_len": sum(len(item["content"]) for item in self.messages if item["role"] == "assistant"),
             "num_calls": len(self.messages) // 2
         }
     
-    def init_messages(self):
+    def init_messages(self) -> None:
         self.messages = []
-
-
-if __name__ == "__main__":
-    print(count_tokens_from_messages("cat and a cat"))
