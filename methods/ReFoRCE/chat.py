@@ -5,17 +5,42 @@ import os
 import sys
 import mlflow
 
+# Mock client simulating openai client behavior
+class MockOpenAIClient:
+    def __init__(self):
+        self.chat = self.Chat()
+
+    class Chat:
+        class Completions:
+            def create(self, *, model, messages, temperature, max_output_tokens):
+                # Return a fixed response structure similar to OpenAI chat completion
+                return type("Response", (), {
+                    "choices": [
+                        type("Choice", (), {
+                            "message": type("Message", (), {
+                                "content": "Mocked response to: " + messages[-1]["content"][:30]
+                            })()
+                        })()
+                    ]
+                })()
+        def __init__(self):
+            self.completions = self.Completions()
 
 class GPTChat:
     def __init__(self,
                  azure: bool = False,
-                 model: str = "gpt-4o",
+                 model: str = "gpt-4o",   # mock
                  temperature: Union[int, float] = 1,
                  max_context_tokens: Optional[int] = None,
                  max_response_tokens: Optional[int] = None):
-        mlflow.openai.autolog() 
+        # the mock argument is to mock the OpenAI client. This can
+        # be used to test the code without needing a model.
+        # The mocked response is the first 30 characters in the prompt.
+        # mlflow.openai.autolog() 
 
-        if not azure:
+        if model == "mock":
+            self.client = MockOpenAIClient()
+        elif not azure:
             if model in ["o1-preview", "o1-mini"]:
                 self.client = OpenAI(
                     api_key=os.environ.get("OPENAI_API_KEY"),
@@ -124,3 +149,9 @@ class GPTChat:
     
     def init_messages(self) -> None:
         self.messages = []
+
+if __name__ == "__main__":
+    chat = GPTChat(model="mock")
+    print(chat.get_response("Hello from mock"))
+    print(chat.get_response("Give me some code"))
+    print(chat.get_message_len())
