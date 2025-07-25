@@ -149,9 +149,3 @@ class GPTChat:
     
     def init_messages(self) -> None:
         self.messages = []
-
-if __name__ == "__main__":
-    chat = GPTChat(model="mock")
-    print(chat.get_response("Hello from mock"))
-    print(chat.get_response("Give me some code"))
-    print(chat.get_message_len())
